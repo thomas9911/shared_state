@@ -1,4 +1,7 @@
 defmodule SharedState.State do
+  @moduledoc """
+  The main state module. All the functions are just pass through functions from `Agent`.
+  """
   use Agent
 
   @timeout 5000

@@ -1,4 +1,7 @@
 defmodule SharedState.Error do
+  @doc """
+  formats error map from Queue.all like functions to a :ok or {:error, [any]}
+  """
   def format(map) when is_map(map) do
     statuses = Enum.map(map, &elem(&1, 1))
 

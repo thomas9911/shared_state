@@ -1,7 +1,9 @@
-defmodule SharedState.StateQueue do
+defmodule SharedState.Queue do
   use GenServer
 
   @timeout 5000
+
+  alias SharedState.Queue.Flush
 
   def start_link(opts) do
     {initial_value, opts} = Keyword.pop(opts, :initial_value, [])
@@ -66,15 +68,27 @@ defmodule SharedState.StateQueue do
   @doc """
   Flush all elements for single random queue.
   """
-  def flush() do
-    GenServer.cast(random_worker(), :flush)
+  def flush(blocking \\ false)
+
+  def flush(false) do
+    GenServer.cast(random_worker(), {:flush, :all})
+  end
+
+  def flush(true) do
+    GenServer.call(random_worker(), {:flush, :all})
   end
 
   @doc """
   Flush all elements for all queues.
   """
-  def flush_all() do
-    Map.new(all_workers(), &{&1, GenServer.cast(&1, :flush)})
+  def flush_all(blocking \\ false)
+
+  def flush_all(false) do
+    Map.new(all_workers(), &{&1, GenServer.cast(&1, {:flush, :all})})
+  end
+
+  def flush_all(true) do
+    Map.new(all_workers(), &{&1, GenServer.call(&1, {:flush, :all})})
   end
 
   @doc """
@@ -83,11 +97,17 @@ defmodule SharedState.StateQueue do
 
   order can be one of [:fifo, :lifo], defaults to :fifo
 
-  fifo: first in first out, the first element added gets evaluated first
-  lifo: last in first out, the last element added gets evaluated first
+  - fifo: first in first out, the first element added gets evaluated first
+  - lifo: last in first out, the last element added gets evaluated first
   """
-  def flush_all_amount(amount, order \\ :fifo) do
-    Map.new(all_workers(), &{&1, GenServer.cast(&1, {:flush, order, amount})})
+  def flush_all_amount(amount, order \\ :fifo, blocking \\ false)
+
+  def flush_all_amount(amount, order, false) do
+    Map.new(all_workers(), &{&1, GenServer.cast(&1, {:flush, {order, amount}})})
+  end
+
+  def flush_all_amount(amount, order, true) do
+    Map.new(all_workers(), &{&1, GenServer.call(&1, {:flush, {order, amount}})})
   end
 
   def kill_all() do
@@ -101,22 +121,23 @@ defmodule SharedState.StateQueue do
     {:noreply, [element | state]}
   end
 
-  def handle_cast(:flush, state) do
-    Enum.map(state, &SharedState.State.update/1)
-    {:noreply, []}
-  end
+  # def handle_cast(:flush, state) do
+  #   Enum.map(state, &SharedState.State.update/1)
+  #   {:noreply, []}
+  # end
 
-  def handle_cast({:flush, :fifo, amount}, state) do
-    {state, to_flush} = Enum.split(state, length(state) - amount)
+  def handle_cast({:flush, command}, state) do
+    # {state, to_flush} = Enum.split(state, length(state) - amount)
+    {to_flush, state} = Flush.prepare(state, command)
     Enum.map(to_flush, &SharedState.State.update/1)
     {:noreply, state}
   end
 
-  def handle_cast({:flush, :lifo, amount}, state) do
-    {to_flush, state} = Enum.split(state, amount)
-    Enum.map(to_flush, &SharedState.State.update/1)
-    {:noreply, state}
-  end
+  # def handle_cast({:flush, :lifo, amount}, state) do
+  #   {to_flush, state} = Enum.split(state, amount)
+  #   Enum.map(to_flush, &SharedState.State.update/1)
+  #   {:noreply, state}
+  # end
 
   def handle_cast(:clear, _state) do
     {:noreply, []}
@@ -125,6 +146,12 @@ defmodule SharedState.StateQueue do
   @impl true
   def handle_call(:state, _from, state) do
     {:reply, state, state}
+  end
+
+  def handle_call({:flush, command}, _from, state) do
+    {to_flush, state} = Flush.prepare(state, command)
+    _updates = Enum.map(to_flush, &SharedState.State.update/1)
+    {:reply, :ok, state}
   end
 
   # worker stuff
@@ -154,7 +181,7 @@ defmodule SharedState.StateQueue do
   Returns all the registered pids of the queue workers.
   """
   def all_workers() do
-    SharedState.StateQueueSupervisor
+    SharedState.QueueSupervisor
     |> DynamicSupervisor.which_children()
     |> Enum.filter(&is_valid_worker/1)
     |> Enum.map(fn {_, pid, _, _} -> pid end)
