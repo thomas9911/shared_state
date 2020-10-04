@@ -19,7 +19,8 @@ defmodule SharedState.MixProject do
 
   defp deps do
     [
-      {:ex_doc, "~> 0.22", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.22", only: :dev, runtime: false},
+      {:mix_readme, "~> 0.1", only: :dev, runtime: false}
     ]
   end
 end
