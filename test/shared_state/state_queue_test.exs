@@ -1,7 +1,7 @@
 defmodule SharedState.StateQueueTest do
   use ExUnit.Case
 
-  alias SharedState.{State, StateQueue}
+  alias SharedState.{State, StateQueue, Error}
 
   defp nothing(state), do: state
 
@@ -45,6 +45,7 @@ defmodule SharedState.StateQueueTest do
 
       quick_sleep()
       assert %{test: 10} == State.state()
+      assert 10 == State.get(& &1.test)
     end
 
     test "update actions in chunks" do
@@ -60,7 +61,7 @@ defmodule SharedState.StateQueueTest do
       StateQueue.flush_all_amount(5)
 
       quick_sleep()
-      assert %{test: counter} = State.state()
+      counter = State.get(& &1.test)
 
       # more than 1000 you would get if the last elements gets evaluated first
       assert counter < 1000
@@ -71,10 +72,15 @@ defmodule SharedState.StateQueueTest do
       StateQueue.flush_all_amount(5, :lifo)
 
       quick_sleep()
-      assert %{test: counter} = State.state()
+      counter = State.get(& &1.test)
 
       # less than 250 you would get if the first elements gets evaluated first
       assert counter > 250
+    end
+
+    test "kill all restarts workers" do
+      assert :ok == StateQueue.kill_all() |> Error.format()
+      assert :ok == StateQueue.push(fn state -> Map.put(state, :a, 1) end)
     end
   end
 end

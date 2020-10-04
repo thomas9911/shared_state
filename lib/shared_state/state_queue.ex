@@ -32,49 +32,49 @@ defmodule SharedState.StateQueue do
 
   """
   def push(elem) when is_function(elem, 1) do
-    GenServer.cast(random_module(), {:push, elem})
+    GenServer.cast(random_worker(), {:push, elem})
   end
 
   @doc """
   get the state of a random queue.
   """
   def state() do
-    GenServer.call(random_module(), :state, @timeout)
+    GenServer.call(random_worker(), :state, @timeout)
   end
 
   @doc """
   get all the states of all the queues, returns all the states per process in a map.
   """
   def all_states() do
-    Map.new(all_modules(), &{&1, GenServer.call(&1, :state)})
+    Map.new(all_workers(), &{&1, GenServer.call(&1, :state)})
   end
 
   @doc """
   clear a random queue, returns the status.
   """
   def clear() do
-    GenServer.cast(random_module(), :clear)
+    GenServer.cast(random_worker(), :clear)
   end
 
   @doc """
   clear all queues, returns all the statuses per process in a map.
   """
   def clear_all() do
-    Map.new(all_modules(), &{&1, GenServer.cast(&1, :clear)})
+    Map.new(all_workers(), &{&1, GenServer.cast(&1, :clear)})
   end
 
   @doc """
   Flush all elements for single random queue.
   """
   def flush() do
-    GenServer.cast(random_module(), :flush)
+    GenServer.cast(random_worker(), :flush)
   end
 
   @doc """
   Flush all elements for all queues.
   """
   def flush_all() do
-    Map.new(all_modules(), &{&1, GenServer.cast(&1, :flush)})
+    Map.new(all_workers(), &{&1, GenServer.cast(&1, :flush)})
   end
 
   @doc """
@@ -87,7 +87,11 @@ defmodule SharedState.StateQueue do
   lifo: last in first out, the last element added gets evaluated first
   """
   def flush_all_amount(amount, order \\ :fifo) do
-    Map.new(all_modules(), &{&1, GenServer.cast(&1, {:flush, order, amount})})
+    Map.new(all_workers(), &{&1, GenServer.cast(&1, {:flush, order, amount})})
+  end
+
+  def kill_all() do
+    Map.new(all_workers(), &{&1, GenServer.stop(&1)})
   end
 
   # server
@@ -123,21 +127,33 @@ defmodule SharedState.StateQueue do
     {:reply, state, state}
   end
 
-  # module stuff
+  # worker stuff
 
-  def random_module() do
+  @doc """
+  Returns a pid of an available queue process.
+  """
+  def random_worker(n \\ 10)
+
+  def random_worker(0) do
+    raise "No Worker available"
+  end
+
+  def random_worker(n) do
     # {:ok, set} = Registry.meta(Registry.ViaTest, :keys)
     # agent_name = set |> Enum.take_random(1) |> Enum.at(0)
     # {:via, Registry, {Registry.ViaTest, agent_name}}
-    case all_modules()
+    case all_workers()
          |> Enum.take_random(1)
          |> Enum.at(0) do
-      nil -> random_module()
+      nil -> random_worker(n - 1)
       pid -> pid
     end
   end
 
-  def all_modules() do
+  @doc """
+  Returns all the registered pids of the queue workers.
+  """
+  def all_workers() do
     SharedState.StateQueueSupervisor
     |> DynamicSupervisor.which_children()
     |> Enum.filter(&is_valid_worker/1)

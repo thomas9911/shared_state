@@ -3,16 +3,27 @@ defmodule SharedState do
   Documentation for `SharedState`.
   """
 
-  @doc """
-  Hello world.
+  alias SharedState.{State, StateQueue, Error}
 
-  ## Examples
+  def update(func) when is_function(func, 1) do
+    case StateQueue.push(func) do
+      :ok -> StateQueue.flush_all() |> Error.format()
+      e -> e
+    end
+  end
 
-      iex> SharedState.hello()
-      :world
+  def update_lazy(func) when is_function(func, 1) do
+    StateQueue.push(func)
+  end
 
-  """
-  def hello do
-    :world
+  def get(func) when is_function(func, 1) do
+    case StateQueue.flush_all() |> Error.format() do
+      :ok -> State.get(func)
+      e -> e
+    end
+  end
+
+  def get_no_flush(func) when is_function(func, 1) do
+    State.get(func)
   end
 end
