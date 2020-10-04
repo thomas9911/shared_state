@@ -1,9 +1,14 @@
-defmodule SharedState.Application do
-  @moduledoc false
+defmodule SharedState.Supervisor do
+  use Supervisor
 
-  use Application
+  def start_link(init_arg) do
+    tree = Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+    add_queues()
+    tree
+  end
 
-  def start(_type, _args) do
+  @impl true
+  def init(_init_arg) do
     children = [
       SharedState.State,
       {Registry, keys: :unique, name: SharedState.Register, meta: [keys: MapSet.new()]},
@@ -11,12 +16,7 @@ defmodule SharedState.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: SharedState.StateQueueSupervisor}
     ]
 
-    opts = [strategy: :one_for_one, name: SharedState.Supervisor]
-    tree = Supervisor.start_link(children, opts)
-
-    add_queues()
-
-    tree
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
   defp add_queues() do
